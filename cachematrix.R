@@ -13,16 +13,12 @@
 ## function *makeCacheMatrix*
 ## args : matrix
 ## Creates meta-class of matrix for optimized inverse calculation.
-## Inverse is only calculated when first needed.
-## Cache is used during second inverse call and thereafter as long as the matrix is not changed via $setMatrix. 
 ## setMatrix will destroy the cache and the new inverse will only be calculated when needed
 ## *Note :* 1) matrix is always assumed to be square and non -singular, ie. have solution
-##          2) setMatrixInverse is not built as it is not a safe mathematical operation. 
-##             setMatrix will handle the Inverse calculation accordingly
+##          2) setMatrixInverse will verify the validity of the inverse supplied to avoid problems.
+##             For now, it will only issue warning if the matrix inverse supplied is not solve(x)
 
 makeCacheMatrix <- function(x = matrix()) {
-    structure_id <- 0x01010110 # future use / please ignore
-
     inv_x <- NULL           # storing matrix inverse
 
     # Set a new matrix in the structure
@@ -39,17 +35,31 @@ makeCacheMatrix <- function(x = matrix()) {
     
     # Return the matrix inverse. Inverse is calculated when first called and after each matrix reassignment
     # Matrix inverse is calculated here to provide consistency across library and to avoid initialization mistakes
-    getMatrixInverse <- function() {
-        if(is.null(inv_x)) {
-            message("## Calculating matrix inverse and caching it")            
-            inv_x <<- solve(x)  # Note that we are assigning to parent value
+    getMatrixInverse <- function(always_return_valid_value=FALSE) {
+        if(always_return_valid_value) { ## option to always return a valid value to avoid returning NULL
+            if(is.null(inv_x)) {
+                message("## Calculating matrix inverse and caching it")            
+                inv_x <<- solve(x)  # Note that we are assigning to parent value
+            } else {
+                message("## Using cached matrix inverse.")            
+                inv_x
+            }
         } else {
-            message("## Using cached matrix inverse.")            
             inv_x
         }
     }
     
-    list(setMatrix = setMatrix, getMatrix = getMatrix, getMatrixInverse = getMatrixInverse, id = structure_id)
+    # Return the matrix inverse. Inverse is calculated when first called and after each matrix reassignment
+    # Matrix inverse is calculated here to provide consistency across library and to avoid initialization mistakes
+    setMatrixInverse <- function(m = matrix()) {
+        temp <- solve(x)
+        if (sum(temp-m)!=0) {
+            warning("Supplied matrix inverse is not the inverse of stored matrix")
+        }
+        inv_x <<- m # Note that we are assigning to parent value
+    }
+    
+    list(setMatrix = setMatrix, getMatrix = getMatrix, getMatrixInverse = getMatrixInverse, setMatrixInverse = setMatrixInverse)
 }
 
 ## --------------------------------------------------------------------------------------
@@ -58,12 +68,21 @@ makeCacheMatrix <- function(x = matrix()) {
 ## function *cacheSolve*
 ## args : matrix, ...
 ## Return inverse matrix 
-## Note : Determination of whether returning cached value or not is made in makeCacheMatrix
+## Cache is used during second inverse call and thereafter as long as the matrix is not changed via $setMatrix. 
 
 cacheSolve <- function(x, ...) {
     ## Return a matrix that is the inverse of 'x'
     
     inv_x <- x$getMatrixInverse()
+    if (!is.null(inv_x)) {
+        message("Getting cached data")
+        return(inv_x)
+    }
+    message("Calculating matrix inverse and caching result")
+    m <- x$getMatrix()
+    inv_m <- solve(m)
+    x$setMatrixInverse(inv_m)
+    inv_m
 }
 
 
